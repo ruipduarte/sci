@@ -1,6 +1,8 @@
 import numpy as np
 import os
 
+PARAM_FILE = "svm_params.txt"
+
 # ---------------------------------------------------------
 # Load a single PGM file (binary P5 format)
 # ---------------------------------------------------------
@@ -101,24 +103,57 @@ def predict_svm_ovr(X, W, b):
     return np.argmax(scores, axis=1)
 
 
+def load_svm_params(filename):
+    """Load W and b from a text file."""
+    with open(filename, "r") as f:
+        lines = f.readlines()
+
+    # Find where 'b:' starts
+    b_index = [i for i, line in enumerate(lines) if line.strip() == "b:"][0]
+
+    # Extract W lines (skip header "W:")
+    W_lines = lines[1:b_index]
+    b_lines = lines[b_index + 1:]
+
+    # Convert to numpy arrays
+    W = np.loadtxt(W_lines)
+    b = np.loadtxt(b_lines)
+
+    return W, b
+
+def save_svm_params(W, b, filename):
+    """Save W and b to a text file."""
+    with open(filename, "w") as f:
+        f.write("W:\n")
+        np.savetxt(f, W, fmt="%.6f")
+        f.write("\nb:\n")
+        np.savetxt(f, b.reshape(1, -1), fmt="%.6f")
+    print(f"Parameters saved to {filename}")
+
 # ---------------------------------------------------------
-# Example usage
+# Main
 # ---------------------------------------------------------
 if __name__ == "__main__":
     # Path to folder containing all MNIST .pgm files
+    params_file_path = "svm_params.txt"
     data_folder = "mnist_s"
-    train_data_folder = "yymnist-master/mnist/train"
-    test_data_folder = "yymnist-master/mnist/test"
+    train_data_folder = "yymnist-master/mnist_s/train"
+    test_data_folder = "yymnist-master/mnist_s/test"
 
-    print("Loading MNIST PGM files...")
-    X_train, y_train = load_mnist_pgm_dataset(train_data_folder)
-    print(f"Loaded {len(X_train)} train images, each of dimension {X_train.shape[1]} features.")
+    if os.path.exists(PARAM_FILE):
+        print("✅ Parameters file found — loading and classifying...")
+        W, b = load_svm_params(PARAM_FILE)
+
+    else:
+        print("Loading MNIST PGM files...")
+        X_train, y_train = load_mnist_pgm_dataset(train_data_folder)
+        print(f"Loaded {len(X_train)} train images, each of dimension {X_train.shape[1]} features.")
+        print("Training SVM classifier...")
+        W, b = train_svm_ovr(X_train, y_train, n_classes=10, lr=0.001, lambda_param=0.01, n_iters=75)
+        save_svm_params(W, b, PARAM_FILE)
+    
     X_test, y_test = load_mnist_pgm_dataset(test_data_folder)
     print(f"Loaded {len(X_test)} test images, each of dimension {X_test.shape[1]} features.")
-
-    print("Training SVM classifier...")
-    W, b = train_svm_ovr(X_train, y_train, n_classes=10, lr=0.001, lambda_param=0.01, n_iters=5)
-
     print("Evaluating...")
     y_pred = predict_svm_ovr(X_test, W, b)
     accuracy = np.mean(y_pred == y_test)

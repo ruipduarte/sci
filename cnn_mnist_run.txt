@@ -1,0 +1,12 @@
+
+1. trains and classifies in floating-point
+python cnn_mnist_basic.py
+
+2. after the model is trained, run only the inference
+python cnn_inference_pynq1.py
+
+3. quantize the model to fixed-point (8/16 bits)
+python cnn_mnist_quantizer.py
+
+4. quantized inference
+python cnn_mnist_opti1.py

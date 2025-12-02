@@ -40,12 +40,13 @@ class Conv2DQ7AxisAccelerator:
 
         # --- Auto-detect AXI DMA IP ---
         dma_ip_name = None
-        for name, desc in self.overlay.ip_dict.items():
+        for name, desc in self.overlay.ip_dict.items():    
             # desc['type'] e.g. "xilinx.com:ip:axi_dma:7.1"
-            if 'axi_dma_0' in desc.get('type', ''):
+            if 'xilinx.com:ip:axi_dma:7.1' in desc.get('type', ''):
                 dma_ip_name = name
                 break
-
+                
+        print(name, "->", desc['type'])
         if dma_ip_name is None:
             raise RuntimeError(
                 "No AXI DMA IP found in overlay '{}'. "
@@ -54,6 +55,14 @@ class Conv2DQ7AxisAccelerator:
             )
 
         self.dma = getattr(self.overlay, dma_ip_name)
+
+        # check if already started
+        try:
+            self.dma.recvchannel.start()
+            self.dma.sendchannel.start()
+        except AttributeError:
+            # on some Pynq versions start() is already called in __init__
+            pass
 
         # Allocate physically contiguous buffers
         if _alloc_mode == "allocate":
@@ -121,14 +130,29 @@ class Conv2DQ7AxisAccelerator:
           26x26 list-of-lists of ints (Q14).
         """
         self._prepare_input_stream(image, kernel)
+        
 
         # Start RX first (S2MM), then TX (MM2S)
-        self.dma.recvchannel.transfer(self.out_buf)
-        self.dma.sendchannel.transfer(self.in_buf)
-
+        try:
+            self.dma.recvchannel.transfer(self.out_buf)
+            self.dma.sendchannel.transfer(self.in_buf)
+        except RuntimeError as e:
+            print("DMA error during transfer:", e)
+            print("DMA register_map:")
+            print(self.dma.register_map)
+            raise
+            
         # Wait with timeout instead of infinite busy-wait
-        self._wait_channel(self.dma.sendchannel, timeout_s=2.0, label="MM2S ")
-        self._wait_channel(self.dma.recvchannel, timeout_s=2.0, label="S2MM ")
+        try:
+            self._wait_channel(self.dma.sendchannel, timeout_s=2.0, label="MM2S ")
+            self._wait_channel(self.dma.recvchannel, timeout_s=2.0, label="S2MM ")
+        except RuntimeError as e:
+            print("DMA error during wait():", e)
+            print("DMA register_map:")
+            print(self.dma.register_map)
+            raise
+
+
 
         # Convert output buffer to Python list
         out = [[0] * self.OUT_W for _ in range(self.OUT_H)]
